@@ -13,6 +13,18 @@ export interface Ticket {
   status: TicketStatus
 }
 
+/** Every status a board row can have, in workflow order (UNKNOWN last). */
+export const ALL_STATUSES: TicketStatus[] = [
+  'OPEN',
+  'IN DEVELOPMENT',
+  'READY FOR REVIEW',
+  'IN REVIEW',
+  'APPROVED',
+  'REJECTED',
+  'DONE',
+  'UNKNOWN',
+]
+
 const TICKET_FILE = /^IT-\d+(?:-[\w-]+)?\.md$/i
 const STATUS_LINE = /^\*\*Status:\*\*\s*(.+?)\s*$/m
 

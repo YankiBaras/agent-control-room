@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildBoard } from './board'
+import { buildBoard, filterRowsByStatus } from './board'
 import { latestSessions, normalizePath, parseSessionLine } from './sessions'
 import { parseTicket, parseTicketStatus, ticketKeyFromFileName } from './tickets'
 
@@ -85,5 +85,24 @@ describe('board', () => {
       'sampleboard',
     )
     expect(rows[0].sessions.map((s) => s.id)).toEqual(['s3'])
+  })
+})
+
+describe('filterRowsByStatus', () => {
+  const tickets = [
+    { key: 'IT-1', status: 'OPEN' as const },
+    { key: 'IT-2', status: 'DONE' as const },
+    { key: 'IT-3', status: 'IN REVIEW' as const },
+  ]
+  const rows = buildBoard(tickets, [], 'Proj')
+  const keys = (r: typeof rows) => r.map((row) => row.ticket.key)
+
+  it('keeps tickets in any of the selected statuses', () => {
+    expect(keys(filterRowsByStatus(rows, new Set(['OPEN', 'IN REVIEW'])))).toEqual(['IT-1', 'IT-3'])
+    expect(keys(filterRowsByStatus(rows, new Set(['DONE'])))).toEqual(['IT-2'])
+  })
+
+  it('keeps every ticket when nothing is selected', () => {
+    expect(keys(filterRowsByStatus(rows, new Set()))).toEqual(['IT-1', 'IT-2', 'IT-3'])
   })
 })

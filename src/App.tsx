@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { buildBoard } from './lib/board'
+import { buildBoard, filterRowsByStatus } from './lib/board'
 import { parseSessionLine, type Session } from './lib/sessions'
-import { parseTicket, type Ticket } from './lib/tickets'
+import { ALL_STATUSES, parseTicket, type Ticket, type TicketStatus } from './lib/tickets'
 import './App.css'
 
 /** Reads a folder the user picked. Read-only: nothing is written and nothing is sent anywhere. */
@@ -33,11 +33,22 @@ export default function App() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [projectFolder, setProjectFolder] = useState('')
   const [error, setError] = useState('')
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<TicketStatus>>(new Set())
 
   const rows = useMemo(
     () => (projectFolder ? buildBoard(tickets, sessions, projectFolder) : []),
     [tickets, sessions, projectFolder],
   )
+  const visibleRows = useMemo(() => filterRowsByStatus(rows, selectedStatuses), [rows, selectedStatuses])
+
+  function toggleStatus(status: TicketStatus) {
+    setSelectedStatuses((prev) => {
+      const next = new Set(prev)
+      if (next.has(status)) next.delete(status)
+      else next.add(status)
+      return next
+    })
+  }
 
   async function onProjectPick(files: FileList | null) {
     if (!files || files.length === 0) return
@@ -91,6 +102,23 @@ export default function App() {
       {rows.length === 0 ? (
         <p className="empty">בחר תיקיית פרויקט כדי לראות את הטיקטים.</p>
       ) : (
+        <>
+        <fieldset className="status-filter">
+          <legend>סינון לפי סטטוס (ללא בחירה מוצגים כולם)</legend>
+          {ALL_STATUSES.map((status) => (
+            <label key={status} dir="ltr">
+              <input
+                type="checkbox"
+                checked={selectedStatuses.has(status)}
+                onChange={() => toggleStatus(status)}
+              />
+              {status}
+            </label>
+          ))}
+        </fieldset>
+        {visibleRows.length === 0 ? (
+          <p className="empty">אין טיקטים בסטטוסים שנבחרו.</p>
+        ) : (
         <table>
           <thead>
             <tr>
@@ -100,7 +128,7 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {visibleRows.map((row) => (
               <tr key={row.ticket.key}>
                 <td dir="ltr">{row.ticket.key}</td>
                 <td>{row.ticket.status}</td>
@@ -121,6 +149,8 @@ export default function App() {
             ))}
           </tbody>
         </table>
+        )}
+        </>
       )}
     </main>
   )

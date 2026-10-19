@@ -1,6 +1,6 @@
 import type { Session } from './sessions'
 import { latestSessions, normalizePath } from './sessions'
-import type { Ticket } from './tickets'
+import type { Ticket, TicketStatus } from './tickets'
 
 export interface BoardRow {
   ticket: Ticket
@@ -24,4 +24,10 @@ export function buildBoard(tickets: Ticket[], sessions: Session[], projectFolder
     .slice()
     .sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }))
     .map((ticket) => ({ ticket, sessions: own }))
+}
+
+/** Keeps the rows whose ticket status is selected. An empty selection keeps every row. */
+export function filterRowsByStatus(rows: BoardRow[], selected: ReadonlySet<TicketStatus>): BoardRow[] {
+  if (selected.size === 0) return rows
+  return rows.filter((row) => selected.has(row.ticket.status))
 }
