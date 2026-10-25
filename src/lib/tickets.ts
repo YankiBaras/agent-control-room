@@ -11,6 +11,7 @@ export type TicketStatus =
 export interface Ticket {
   key: string
   status: TicketStatus
+  title: string | null
 }
 
 /** Every status a board row can have, in workflow order (UNKNOWN last). */
@@ -27,6 +28,8 @@ export const ALL_STATUSES: TicketStatus[] = [
 
 const TICKET_FILE = /^IT-\d+(?:-[\w-]+)?\.md$/i
 const STATUS_LINE = /^\*\*Status:\*\*\s*(.+?)\s*$/m
+const TITLE_LINE = /^# (.*)$/m
+const KEY_AND_SEPARATOR = /^IT-\d+(?: — | - |: )?/i
 
 /** Returns the ticket key (for example "IT-101") for a file name such as "IT-101-slug.md", or null. */
 export function ticketKeyFromFileName(fileName: string): string | null {
@@ -52,9 +55,17 @@ export function parseTicketStatus(markdown: string): TicketStatus {
   return (known.find((s) => s === value) ?? 'UNKNOWN') as TicketStatus
 }
 
+/** Reads the title from the first "# " heading, without the ticket key and its separator, or null. */
+export function parseTicketTitle(markdown: string): string | null {
+  const match = TITLE_LINE.exec(markdown)
+  if (!match) return null
+  const title = match[1].replace(KEY_AND_SEPARATOR, '').trim()
+  return title || null
+}
+
 /** Builds a ticket from one docs file, or returns null when the file name is not a ticket file. */
 export function parseTicket(fileName: string, markdown: string): Ticket | null {
   const key = ticketKeyFromFileName(fileName)
   if (!key) return null
-  return { key, status: parseTicketStatus(markdown) }
+  return { key, status: parseTicketStatus(markdown), title: parseTicketTitle(markdown) }
 }

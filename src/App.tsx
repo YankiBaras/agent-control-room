@@ -130,7 +130,14 @@ export default function App() {
           <tbody>
             {visibleRows.map((row) => (
               <tr key={row.ticket.key}>
-                <td dir="ltr">{row.ticket.key}</td>
+                <td>
+                  <span dir="ltr">{row.ticket.key}</span>
+                  {row.ticket.title && (
+                    <span className="ticket-title">
+                      <bdi>{row.ticket.title}</bdi>
+                    </span>
+                  )}
+                </td>
                 <td>{row.ticket.status}</td>
                 <td>
                   {row.sessions.length === 0 ? (

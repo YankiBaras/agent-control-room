@@ -39,6 +39,11 @@ td {
   text-align: start;
 }
 
+.ticket-title {
+  margin-inline-start: 8px;
+  color: var(--text-soft);
+}
+
 .sessions {
   margin: 0;
   padding: 0;

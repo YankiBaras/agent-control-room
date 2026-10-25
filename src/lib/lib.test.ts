@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildBoard, filterRowsByStatus } from './board'
 import { latestSessions, normalizePath, parseSessionLine } from './sessions'
-import { parseTicket, parseTicketStatus, ticketKeyFromFileName } from './tickets'
+import { parseTicket, parseTicketStatus, parseTicketTitle, ticketKeyFromFileName } from './tickets'
 
 describe('tickets', () => {
   it('reads the key from a ticket file name', () => {
@@ -21,8 +21,42 @@ describe('tickets', () => {
   })
 
   it('builds a ticket only from a ticket file', () => {
-    expect(parseTicket('IT-9-x.md', '**Status:** DONE')).toEqual({ key: 'IT-9', status: 'DONE' })
+    expect(parseTicket('IT-9-x.md', '**Status:** DONE')).toEqual({ key: 'IT-9', status: 'DONE', title: null })
     expect(parseTicket('notes.md', '**Status:** DONE')).toBeNull()
+  })
+
+  it('fills the title from the heading', () => {
+    expect(parseTicket('IT-202-x.md', '# IT-202 - Fix the nightly sync job\n\n**Status:** OPEN')).toEqual({
+      key: 'IT-202',
+      status: 'OPEN',
+      title: 'Fix the nightly sync job',
+    })
+  })
+})
+
+describe('parseTicketTitle', () => {
+  it('strips the key and an em dash separator, keeping another key inside the title', () => {
+    expect(parseTicketTitle('# IT-201 — Disk cleanup (IT-199) follow-up before go-live')).toBe(
+      'Disk cleanup (IT-199) follow-up before go-live',
+    )
+  })
+
+  it('strips a hyphen separator', () => {
+    expect(parseTicketTitle('# IT-202 - Fix the nightly sync job')).toBe('Fix the nightly sync job')
+  })
+
+  it('strips a colon separator and keeps a colon inside the title', () => {
+    expect(parseTicketTitle('# IT-203: Report tool: one EXE and a searchable dropdown')).toBe(
+      'Report tool: one EXE and a searchable dropdown',
+    )
+  })
+
+  it('returns null when only the key is left', () => {
+    expect(parseTicketTitle('# IT-204')).toBeNull()
+  })
+
+  it('returns null when there is no "# " line', () => {
+    expect(parseTicketTitle('**Status:** OPEN')).toBeNull()
   })
 })
 
@@ -55,8 +89,8 @@ describe('sessions', () => {
 
 describe('board', () => {
   const tickets = [
-    { key: 'IT-10', status: 'OPEN' as const },
-    { key: 'IT-2', status: 'DONE' as const },
+    { key: 'IT-10', status: 'OPEN' as const, title: null },
+    { key: 'IT-2', status: 'DONE' as const, title: null },
   ]
   const sessions = [
     { id: 's1', cwd: 'C:\\Projects\\SampleBoard', lastActivity: '2026-10-19T10:00:00Z' },
@@ -90,9 +124,9 @@ describe('board', () => {
 
 describe('filterRowsByStatus', () => {
   const tickets = [
-    { key: 'IT-1', status: 'OPEN' as const },
-    { key: 'IT-2', status: 'DONE' as const },
-    { key: 'IT-3', status: 'IN REVIEW' as const },
+    { key: 'IT-1', status: 'OPEN' as const, title: null },
+    { key: 'IT-2', status: 'DONE' as const, title: null },
+    { key: 'IT-3', status: 'IN REVIEW' as const, title: null },
   ]
   const rows = buildBoard(tickets, [], 'Proj')
   const keys = (r: typeof rows) => r.map((row) => row.ticket.key)
