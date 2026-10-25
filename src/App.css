@@ -85,3 +85,9 @@ td {
   font-size: 13px;
   cursor: pointer;
 }
+
+.session-meta {
+  margin-inline-start: 8px;
+  color: var(--text-soft);
+  font-size: 12px;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildBoard, filterRowsByStatus } from './board'
-import { latestSessions, normalizePath, parseSessionLine } from './sessions'
+import { latestSessions, normalizePath, parseSessionFiles, parseSessionLine, parseSessionNameLine } from './sessions'
 import { parseTicket, parseTicketStatus, parseTicketTitle, ticketKeyFromFileName } from './tickets'
 
 describe('tickets', () => {
@@ -63,7 +63,7 @@ describe('parseTicketTitle', () => {
 describe('sessions', () => {
   it('parses a valid session line', () => {
     const line = JSON.stringify({ sessionId: 'abc', cwd: 'C:\\Proj', timestamp: '2026-10-19T10:00:00Z' })
-    expect(parseSessionLine(line)).toEqual({ id: 'abc', cwd: 'C:\\Proj', lastActivity: '2026-10-19T10:00:00Z' })
+    expect(parseSessionLine(line)).toEqual({ id: 'abc', cwd: 'C:\\Proj', lastActivity: '2026-10-19T10:00:00Z', name: null })
   })
 
   it('returns null for a bad or incomplete line', () => {
@@ -74,12 +74,25 @@ describe('sessions', () => {
 
   it('keeps the latest line per session', () => {
     const latest = latestSessions([
-      { id: 'a', cwd: 'x', lastActivity: '2026-10-19T10:00:00Z' },
-      { id: 'a', cwd: 'x', lastActivity: '2026-10-19T12:00:00Z' },
-      { id: 'b', cwd: 'x', lastActivity: '2026-10-19T11:00:00Z' },
+      { id: 'a', cwd: 'x', lastActivity: '2026-10-19T10:00:00Z', name: null },
+      { id: 'a', cwd: 'x', lastActivity: '2026-10-19T12:00:00Z', name: null },
+      { id: 'b', cwd: 'x', lastActivity: '2026-10-19T11:00:00Z', name: null },
     ])
     expect(latest.map((s) => s.id)).toEqual(['a', 'b'])
     expect(latest[0].lastActivity).toBe('2026-10-19T12:00:00Z')
+  })
+
+  it('reads a session name line and ignores other lines', () => {
+    expect(parseSessionNameLine(JSON.stringify({ type: 'custom-title', customTitle: ' Homework ', sessionId: 'a' }))).toEqual(
+      { id: 'a', source: 'custom', name: 'Homework' },
+    )
+    expect(parseSessionNameLine(JSON.stringify({ type: 'ai-title', aiTitle: 'Fix the filter', sessionId: 'a' }))).toEqual({
+      id: 'a',
+      source: 'ai',
+      name: 'Fix the filter',
+    })
+    expect(parseSessionNameLine(JSON.stringify({ type: 'custom-title', customTitle: '  ', sessionId: 'a' }))).toBeNull()
+    expect(parseSessionNameLine(JSON.stringify({ type: 'user', sessionId: 'a', cwd: 'C:\\Proj' }))).toBeNull()
   })
 
   it('normalises Windows paths for comparison', () => {
@@ -93,8 +106,8 @@ describe('board', () => {
     { key: 'IT-2', status: 'DONE' as const, title: null },
   ]
   const sessions = [
-    { id: 's1', cwd: 'C:\\Projects\\SampleBoard', lastActivity: '2026-10-19T10:00:00Z' },
-    { id: 's2', cwd: 'C:\\Projects\\Other', lastActivity: '2026-10-19T11:00:00Z' },
+    { id: 's1', cwd: 'C:\\Projects\\SampleBoard', lastActivity: '2026-10-19T10:00:00Z', name: null },
+    { id: 's2', cwd: 'C:\\Projects\\Other', lastActivity: '2026-10-19T11:00:00Z', name: null },
   ]
 
   it('sorts tickets by number', () => {
@@ -115,7 +128,7 @@ describe('board', () => {
   it('matches a POSIX cwd by the same folder name', () => {
     const rows = buildBoard(
       tickets,
-      [{ id: 's3', cwd: '/home/student/SampleBoard/', lastActivity: '2026-10-19T12:00:00Z' }],
+      [{ id: 's3', cwd: '/home/student/SampleBoard/', lastActivity: '2026-10-19T12:00:00Z', name: null }],
       'sampleboard',
     )
     expect(rows[0].sessions.map((s) => s.id)).toEqual(['s3'])
@@ -138,5 +151,49 @@ describe('filterRowsByStatus', () => {
 
   it('keeps every ticket when nothing is selected', () => {
     expect(keys(filterRowsByStatus(rows, new Set()))).toEqual(['IT-1', 'IT-2', 'IT-3'])
+  })
+})
+
+describe('parseSessionFiles', () => {
+  const line = (record: object) => JSON.stringify(record)
+  const file = (name: string, lines: object[]) => ({ name, text: async () => lines.map(line).join('\n') })
+  const activity = (id: string, timestamp: string) => ({ type: 'user', sessionId: id, cwd: 'C:\\Proj', timestamp })
+
+  it('gives a session its name, preferring the last name the user gave over the generated title', async () => {
+    const result = await parseSessionFiles([
+      file('a.jsonl', [
+        activity('a', '2026-10-19T10:00:00Z'),
+        { type: 'ai-title', aiTitle: 'Generated title', sessionId: 'a' },
+        { type: 'custom-title', customTitle: 'First name', sessionId: 'a' },
+        { type: 'custom-title', customTitle: 'Renamed', sessionId: 'a' },
+        { type: 'ai-title', aiTitle: 'Later generated title', sessionId: 'a' },
+      ]),
+      file('b.jsonl', [activity('b', '2026-10-19T11:00:00Z'), { type: 'ai-title', aiTitle: 'Only a title', sessionId: 'b' }]),
+    ])
+    expect(latestSessions(result.sessions).map((s) => [s.id, s.name])).toEqual([
+      ['b', 'Only a title'],
+      ['a', 'Renamed'],
+    ])
+    expect(result.skipped).toBe(0)
+  })
+
+  it('keeps a session without a name, with a null name', async () => {
+    const result = await parseSessionFiles([file('c.jsonl', [activity('c', '2026-10-19T10:00:00Z')])])
+    expect(result.sessions).toEqual([{ id: 'c', cwd: 'C:\\Proj', lastActivity: '2026-10-19T10:00:00Z', name: null }])
+  })
+
+  it('skips and counts a file that fails to read, and still loads the others', async () => {
+    const unreadable = {
+      name: 'busy.jsonl',
+      text: () => Promise.reject(new DOMException('changed after pick', 'NotReadableError')),
+    }
+    const result = await parseSessionFiles([
+      file('a.jsonl', [activity('a', '2026-10-19T10:00:00Z')]),
+      unreadable,
+      file('notes.txt', [activity('x', '2026-10-19T10:00:00Z')]),
+      file('b.jsonl', [activity('b', '2026-10-19T11:00:00Z')]),
+    ])
+    expect(result.skipped).toBe(1)
+    expect(result.sessions.map((s) => s.id)).toEqual(['a', 'b'])
   })
 })

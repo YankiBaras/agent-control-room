@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { buildBoard, filterRowsByStatus } from './lib/board'
-import { parseSessionLine, type Session } from './lib/sessions'
+import { parseSessionFiles, type Session } from './lib/sessions'
 import { ALL_STATUSES, parseTicket, type Ticket, type TicketStatus } from './lib/tickets'
 import './App.css'
 
@@ -16,23 +16,12 @@ async function readTicketFiles(files: FileList): Promise<Ticket[]> {
   return tickets
 }
 
-async function readSessionFiles(files: FileList): Promise<Session[]> {
-  const sessions: Session[] = []
-  for (const file of Array.from(files)) {
-    if (!file.name.endsWith('.jsonl')) continue
-    for (const line of (await file.text()).split('\n')) {
-      const session = parseSessionLine(line)
-      if (session) sessions.push(session)
-    }
-  }
-  return sessions
-}
-
 export default function App() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [projectFolder, setProjectFolder] = useState('')
   const [error, setError] = useState('')
+  const [skippedSessionFiles, setSkippedSessionFiles] = useState(0)
   const [selectedStatuses, setSelectedStatuses] = useState<Set<TicketStatus>>(new Set())
 
   const rows = useMemo(
@@ -65,8 +54,11 @@ export default function App() {
   async function onSessionsPick(files: FileList | null) {
     if (!files || files.length === 0) return
     setError('')
+    setSkippedSessionFiles(0)
     try {
-      setSessions(await readSessionFiles(files))
+      const result = await parseSessionFiles(Array.from(files))
+      setSessions(result.sessions)
+      setSkippedSessionFiles(result.skipped)
     } catch {
       setError('לא הצלחתי לקרוא את קבצי השיחות')
     }
@@ -98,6 +90,12 @@ export default function App() {
       </section>
 
       {error && <p className="error" role="alert">{error}</p>}
+      {skippedSessionFiles > 0 && (
+        <p className="error" role="status">
+          דילגתי על {skippedSessionFiles} קבצי שיחה שלא ניתן היה לקרוא (כנראה השתנו אחרי הבחירה). בחירה מחדש של
+          התיקייה תנסה לקרוא אותם שוב.
+        </p>
+      )}
 
       {rows.length === 0 ? (
         <p className="empty">בחר תיקיית פרויקט כדי לראות את הטיקטים.</p>
@@ -145,8 +143,13 @@ export default function App() {
                   ) : (
                     <ul className="sessions">
                       {row.sessions.map((s) => (
-                        <li key={s.id} dir="ltr">
-                          {s.id} · {s.lastActivity}
+                        <li key={s.id}>
+                          <bdi className={s.name ? undefined : 'empty'}>{s.name ?? 'No name found'}</bdi>
+                          <span className="session-meta">
+                            <span dir="ltr">
+                              {s.id} · {s.lastActivity}
+                            </span>
+                          </span>
                         </li>
                       ))}
                     </ul>
